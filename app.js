@@ -2,39 +2,34 @@
  * Read a manifest's transcription.
  * author: cubap@slu.edu
  */
-var rerum = angular.module('rerum', ['ui.bootstrap', 'ngRoute', 'ngSanitize', 'angular-loading-bar','utils']);
+var rerum = angular.module('rerum', ['ui.bootstrap', 'ngRoute', 'ngSanitize', 'angular-loading-bar', 'utils']);
 rerum.config(['$routeProvider',
     function ($routeProvider) {
         $routeProvider
-            .when('/read', {
-                templateUrl: 'read.html',
-                controller: 'readManifestController',
+            .when('/aybee', {
+                templateUrl: 'aybee.html',
+                controller: 'aybeeController',
                 resolve: {
                     obj: function ($location, $http, rerumService) {
                         // TODO: preload a known manifest from the URL or memory
                         var mUrl = $location.search().url;
-                        var manifest = (mUrl && $http.get(mUrl).then(function (m) {
-                            // success
-                            rerumService.extractResources(m.data);
-                            return m.data;
-                        }, function (err) {
-                            // error
-                            return {
-                                error: err
-                            };
-                        })) || {};
+                        var manifest = (mUrl && $http.get(mUrl)
+                            .then(function (m) {
+                                // success
+                                rerumService.extractResources(m.data);
+                                return m.data;
+                            }, function (err) {
+                                // error
+                                return {
+                                    error: err
+                                };
+                            })) || {};
                         return manifest;
-                    },
-                    canvas: function ($location, $http, rerumService) {
-                        // TODO: preload a known manifest from the URL or memory
-                        var c = $location.search().p;
-                        return c || undefined;
                     }
                 }
             })
-            .otherwise(({ redirectTo: '/read' }));
+            .otherwise(({ redirectTo: '/aybee' }));
     }]);
-rerum.value('Terminal', false); // set Apple IIe style
 rerum.value('config', {
     buffer: .05, // percent of canvas height
     closeCrop: false, // show just enough around a slice to view
@@ -45,25 +40,22 @@ rerum.value('Manifest', {});
 rerum.controller('mainController', function ($scope, $location) {
 
 });
-
-rerum.controller('readManifestController', function ($scope, $http, $sce, obj, canvas, rerumService) {
+rerum.controller('aybeeController', function ($scope, $http, $sce, obj, rerumService) {
     $scope.obj = obj;
     $scope.screen = {
-        viewing: "image",
-        block: true,
         language: "en",
-        backsplashStyle: "",
-        views: {
-            image: "annotations",
-            annotations: "image"
-        },
-        murl: ""
+        murl: "",
+        letters: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"]
     };
+    $scope.annotations = [];
     if (obj['@id']) {
-        $scope.screen.canvas = (canvas === undefined) ? $scope.obj.sequences[0].canvases[0] : $scope.obj.sequences[0].canvases[canvas];
         angular.forEach(obj.sequences[0].canvases, function (canvas) {
             var uri;
-            if (!canvas.otherContent || angular.isArray(canvas.otherContent[0].resources)) {
+            if (!canvas.otherContent) {
+                return false;
+            }
+            if (angular.isArray(canvas.otherContent[0].resources)) {
+                $scope.annotations = $scope.annotations.concat(canvas.otherContent[0].resources);
                 return false;
             }
             if (typeof canvas.otherContent[0] === "string") {
@@ -71,13 +63,17 @@ rerum.controller('readManifestController', function ($scope, $http, $sce, obj, c
             } else if (!canvas.otherContent[0].resources && canvas.otherContent[0]['@id']) {
                 uri = canvas.otherContent[0]['@id'];
             }
-            rerumService.resolveURI(uri).then(function (res) {
-                $scope.screen.canvas.otherContent[0] = canvas.otherContent[0] = res.data;
-            }, function (err) { });
+            rerumService.resolveURI(uri)
+                .then(function (res) {
+                    canvas.otherContent[0] = res.data;
+                    $scope.annotations = $scope.annotations.concat(canvas.otherContent[0].resources);
+                }, function (err) { });
         });
     }
     $scope.trust = function (body) {
-        return $sce.trustAsHtml(body);
+        if (typeof body === "string")
+            return $sce.trustAsHtml(body);
+        return $sce.trustAsHtml("")
     };
 
     $scope.setDescription = function (desc, lang) {
@@ -102,75 +98,6 @@ rerum.controller('readManifestController', function ($scope, $http, $sce, obj, c
         return $scope.description;
     };
     $scope.setDescription(obj.description, "en");
-    $scope.getStyle = function (on, canvas) {
-        var xywh = on.substring(on.indexOf("xywh=") + 5).split(",");
-        var height = canvas.height;
-        var width = canvas.width;
-        return {
-            left: xywh[0] / width * 100 + "%",
-            top: xywh[1] / height * 100 + "%",
-            height: xywh[3] / height * 100 + "%",
-            width: xywh[2] / width * 100 + "%"
-        };
-    };
-    $scope.moveBacksplash = function (on, canvas) {
-        var xywh = on.substring(on.indexOf("xywh=") + 5).split(",");
-        var height = canvas.height;
-        var width = canvas.width;
-        var ww = window.innerWidth;
-        var iw = ww * width / xywh[2]; // in pixels
-        var ih = iw * height / width;
-        var ratio = iw / width;
-        $scope.screen.backsplashStyle = {
-            left: -xywh[0] * ratio + "px",
-            top: -xywh[1] * ratio + "px",
-            width: iw + "px",
-            opacity: .6
-        };
-    };
-    $scope.hideBacksplash = function () {
-        $scope.screen.backsplashStyle = null;
-    };
-    $scope.cycleView = function () {
-        $scope.screen.viewing = $scope.screen.views[$scope.screen.viewing];
-    };
-    $scope.getUniverse = function () {
-        return $http.get('http://ryanfb.github.io/iiif-universe/iiif-universe.json').then(function (res) {
-            checkResponse(res.data);
-            $scope.universe = res.data;
-            if (!$scope.universe.collections || $scope.universe.collections.length === 0) {
-                showError({
-                    statusText: "Collections array is empty, but the call succeeded.",
-                    code: 200
-                });
-            }
-        }, showError);
-    };
-    $scope.updateCollection = function (collectionID) {
-        $scope.collection = $http.get(collectionID).then(function (res) {
-            checkResponse(res.data);
-            if (res.data.manifests) {
-                $scope.collection = res.data;
-                if ($scope.collection.manifests.length === 0) {
-                    showError({
-                        statusText: "Manifests array is empty, but the call succeeded.",
-                        code: 200
-                    });
-                }
-            }
-            if (res.data.collections) {
-                $scope.universe = res.data;
-            }
-        }, showError);
-    };
-    $scope.getUniverse();
-    function showError(err) {
-        $scope.obj = {
-            status: "ERROR",
-            message: err.statusText,
-            code: err.status
-        };
-    }
     function checkResponse(data) {
         if (!data || Object.keys(data).length === 0) {
             showError({
@@ -192,5 +119,24 @@ rerum.controller('readManifestController', function ($scope, $http, $sce, obj, c
                 || body.value
         })
         return val
+    }
+
+    $scope.alphaSet = function (list) {
+        list.sort(function (a, b) {
+            let aVal = $scope.getValue(a)
+            let bVal = $scope.getValue(b)
+            if (aVal < bVal) {
+                return -1
+            }
+            if (aVal > bVal) {
+                return 1
+            }
+            return 0
+        });
+        return list;
+    };
+    $scope.searchIndex = function (actual, expected) {
+        var lowerStr = (actual + "").toLowerCase();
+        return lowerStr.indexOf(expected.toLowerCase());
     }
 });
