@@ -71,9 +71,11 @@ rerum.controller('aybeeController', function ($scope, $http, $sce, obj, rerumSer
         });
     }
     $scope.trust = function (body) {
-        if (typeof body === "string")
-            return $sce.trustAsHtml(body);
-        return $sce.trustAsHtml("")
+        if (typeof body !== "string") {
+            body = $scope.getValue({body})
+        }
+        if (!body) { return `` }
+        return $sce.trustAsHtml(body);
     };
 
     $scope.setDescription = function (desc, lang) {

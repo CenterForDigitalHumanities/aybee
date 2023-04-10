@@ -242,7 +242,7 @@ angular.module('utils', [])
             // if (typeof uri !== "string" || !validationService.validateURI(uri)) {
             //     throw Error(uri + " does not appear to be a valid URI");
             // }
-            return $http.get(uri);
+            return $http.get(uri?.replace(/^https?:/,''));
         };
         this.getResource = function(res) {
             if (angular.isObject(res) || !res) {
@@ -410,7 +410,7 @@ angular.module('utils', [])
             if (angular.isArray(uri)) {
                 return $q.all(uri.map(service.resolve));
             }
-            return $http.get(uri)
+            return $http.get(uri?.replace(/^https?:/,''))
                 .success(function(res) {
                     return res;
                 }).error(function(err) {
@@ -465,8 +465,8 @@ angular.module('utils', [])
                     var img = cache.get("img" + $scope.canvas['@id']) || new Image();
                     var imgSelectorIndex = $scope.canvas.images[0].resource['@id'].indexOf("#");
                     var src = (imgSelectorIndex > -1) ?
-                        $scope.canvas.images[0].resource['@id'].substring(0, imgSelectorIndex) :
-                        $scope.canvas.images[0].resource['@id'];
+                        $scope.canvas.images[0].resource['@id'].substring(0, imgSelectorIndex)?.replace(/^https?:/,'') :
+                        $scope.canvas.images[0].resource['@id']?.replace(/^https?:/,'');
                     var imgTrim = (imgSelectorIndex > -1) ?
                         $scope.canvas.images[0].resource['@id'].substring(imgSelectorIndex + 6).split(",") // #xywh=
                         :
@@ -508,10 +508,10 @@ angular.module('utils', [])
                     angular.element(img).one('error', function(event) {
                         // CORS H8, probably, load tainted canvas
                         $element.one('load', loaded);
-                        $element.attr('src', $scope.canvas.images[0].resource['@id']);
+                        $element.attr('src', $scope.canvas.images[0].resource['@id']?.replace(/^https?:/,''));
                     });
                     img.crossOrigin = "anonymous";
-                    img.src = src;
+                    img.src = src?.replace(/^https?:/,'');
                 };
                 $scope.$watch('selector', $scope.updateCrop);
                 $scope.$watch('resized-canvas', $scope.updateCrop);
@@ -523,10 +523,10 @@ angular.module('utils', [])
             restrict: 'A',
             link: function(scope, element, attrs) {
                 if (!attrs.ngSrc.length) {
-                    element.attr('src', attrs.fallbackSrc);
+                    element.attr('src', attrs.fallbackSrc?.replace(/^https?:/,''));
                 }
                 element.on('error', function() {
-                    element.attr('src', attrs.fallbackSrc);
+                    element.attr('src', attrs.fallbackSrc?.replace(/^https?:/,''));
                 });
             }
         };
