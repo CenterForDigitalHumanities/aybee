@@ -669,3 +669,15 @@ monogram[shape='oval'] {
 .region-canvas, .crop-canvas {
     max-width: 100%;
 }
+
+.alert {
+    padding: 1rem 1.5rem;
+    border-radius: 4px;
+    margin: 1rem 0;
+}
+
+.alert-danger {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+}
