@@ -290,7 +290,10 @@ export function normalize(resource) {
     return { ...base, canvases: [normalizeCanvas(resource, version)] };
   }
   if (type === 'Annotation' || type === 'AnnotationPage' || type === 'AnnotationCollection') {
-    return { ...base, annotations: collectAnnotations(resource, version) };
+    const annotations = collectAnnotations(resource, version);
+    // A lone annotation has no label of its own; its text is the best title.
+    const label = base.label || (type === 'Annotation' ? getText(resource.body ?? resource.resource) : '');
+    return { ...base, label, annotations };
   }
   return { ...base, canvases: getCanvases(resource, version) };
 }

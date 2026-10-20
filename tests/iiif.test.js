@@ -324,6 +324,17 @@ test('collectAnnotations follows stub annotations by id', () => {
   ]);
 });
 
+test('normalize uses annotation text as the label for a lone annotation', () => {
+  const n = normalize({
+    '@context': 'http://iiif.io/api/presentation/3/context.json',
+    id: 'https://example.org/anno/1',
+    type: 'Annotation',
+    target: 'https://example.org/canvas/1',
+    body: { type: 'TextualBody', value: 'A marginal note' },
+  });
+  assert.equal(n.label, 'A marginal note');
+});
+
 test('normalize recognizes the v2 sc:AnnotationCollection type', () => {
   const n = normalize({
     '@context': 'http://iiif.io/api/presentation/2/context.json',

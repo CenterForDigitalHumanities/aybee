@@ -179,6 +179,8 @@ class AyBeeViewer extends HTMLElement {
       if (resource.type === 'Annotation' || resource.type === 'AnnotationPage' || resource.type === 'AnnotationCollection') {
         await this.resolveAnnotationResource(resource);
       }
+      // Landing on a single annotation should highlight it, not just its canvas.
+      if (resource.type === 'Annotation' && !query.annotation) this.state.focusAnnotation = resource.id;
       if (query.canvas) this.selectCanvas(query.canvas, { silent: true });
       // Paint once the canvases are ready; external annotation pages load in
       // parallel, and canvases the user has not visited yet pull theirs on demand.
@@ -304,14 +306,17 @@ class AyBeeViewer extends HTMLElement {
   updateUrl() {
     const r = this.state.resource;
     if (!r) return;
-    const params = { 'iiif-content': r.id, manifest: null };
-    if (this.state.canvasIndex >= 0) {
-      const c = (r.canvases || [])[this.state.canvasIndex];
-      if (c && c.id) params.canvas = c.id;
-    }
-    if (this.state.region) params.region = this.state.region;
-    if (this.state.focusAnnotation) params.annotation = this.state.focusAnnotation;
-    history.pushState({}, '', buildUrl(window.location.href, params));
+    const canvas = (r.canvases || [])[this.state.canvasIndex];
+    // Every shareable param is stated explicitly, including the ones that are
+    // now empty, so nothing stale survives a navigation.
+    const params = {
+      'iiif-content': r.id,
+      manifest: null,
+      canvas: canvas?.id || null,
+      region: this.state.region || null,
+      annotation: this.state.focusAnnotation || null,
+    };
+    history.pushState({}, '', buildUrl(window.location.pathname, params));
   }
 
   focusAnnotationElement() {
