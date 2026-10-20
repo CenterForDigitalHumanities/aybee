@@ -6,8 +6,8 @@ import { escapeHtml, sanitizeHtml, parseXYWH, cropImage } from './utils.js';
 const DEFAULT_INBOX = 'https://inbox.rerum.io/messages';
 
 async function fetchJSON(uri) {
-  if (/^http:\/\//i.test(uri)) {
-    throw new Error('HTTP sources are not supported; use an HTTPS URI.');
+  if (new URL(uri, window.location.href).protocol !== 'https:') {
+    throw new Error('Only HTTPS sources are supported.');
   }
   const res = await fetch(uri);
   if (!res.ok) throw new Error(`Failed to load ${uri}: ${res.status} ${res.statusText}`);
@@ -39,6 +39,7 @@ class AyBeeViewer extends HTMLElement {
     this.addEventListener('click', this.onClick);
     this.addEventListener('change', this.onChange);
     this.addEventListener('input', this.onInput);
+    this.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('popstate', this.onPopState);
     this.init();
   }
@@ -75,10 +76,10 @@ class AyBeeViewer extends HTMLElement {
         if (input) input.value = this.state.searchy;
         this.applySearch();
         break;
-      case 'open-share': this.state.shareOpen = true; this.render(); break;
-      case 'close-share': this.state.shareOpen = false; this.render(); break;
-      case 'open-settings': this.state.settingsOpen = true; this.render(); break;
-      case 'close-settings': this.state.settingsOpen = false; this.render(); break;
+      case 'open-share': this.openModal('share'); break;
+      case 'close-share': this.closeModal('share'); break;
+      case 'open-settings': this.openModal('settings'); break;
+      case 'close-settings': this.closeModal('settings'); break;
       case 'add-inbox': this.addInbox(); break;
       case 'remove-inbox': this.removeInbox(el.dataset.inbox); break;
       case 'include-ldn': this.includeLdn(el.dataset.anno); break;
@@ -112,6 +113,43 @@ class AyBeeViewer extends HTMLElement {
     }
   }
 
+  onKeyDown(event) {
+    if (event.key === 'Escape') {
+      if (this.state.shareOpen) this.closeModal('share');
+      else if (this.state.settingsOpen) this.closeModal('settings');
+      return;
+    }
+    if (event.key === 'Enter' && event.target.matches?.('input')) {
+      if (event.target.id === 'resource-input') {
+        event.preventDefault();
+        this.loadFromInput();
+      } else if (event.target.id === 'new-inbox-input') {
+        event.preventDefault();
+        this.addInbox();
+      }
+      return;
+    }
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const el = event.target.closest('[data-action="select-annotation"]');
+    if (!el) return;
+    event.preventDefault();
+    this.selectAnnotation(el.dataset.anno || null);
+  }
+
+  openModal(which) {
+    this.state.shareOpen = which === 'share';
+    this.state.settingsOpen = which === 'settings';
+    this.render();
+    this.querySelector('.modal input, .modal button')?.focus();
+  }
+
+  closeModal(which) {
+    this.state.shareOpen = false;
+    this.state.settingsOpen = false;
+    this.render();
+    this.querySelector(`[data-action="open-${which}"]`)?.focus();
+  }
+
   loadFromInput() {
     const input = this.querySelector('#resource-input');
     const uri = input && input.value.trim();
@@ -133,16 +171,18 @@ class AyBeeViewer extends HTMLElement {
       this.state.resource = { ...resource, id: uri };
       this.state.canvasIndex = -1;
       if (resource.type === 'Collection') {
+        this.state.loading = false;
         this.updateUrl();
         this.render();
         return;
       }
       if (resource.type === 'Annotation' || resource.type === 'AnnotationPage' || resource.type === 'AnnotationCollection') {
         await this.resolveAnnotationResource(resource);
-      } else {
-        await this.loadExternalAnnotations(resource);
       }
       if (query.canvas) this.selectCanvas(query.canvas, { silent: true });
+      // Paint once the canvases are ready; external annotation pages load in
+      // parallel, and canvases the user has not visited yet pull theirs on demand.
+      await Promise.allSettled((this.state.resource?.canvases || []).map((c) => this.loadCanvasAnnotations(c)));
       this.refresh();
       this.focusAnnotationElement();
       this.checkLdn();
@@ -155,8 +195,31 @@ class AyBeeViewer extends HTMLElement {
   }
 
   async resolveAnnotationResource(resource) {
-    const annos = (resource.annotations || []).filter((a) => !a.external);
-    const external = (resource.annotations || []).filter((a) => a.external);
+    const annos = [];
+    const queue = [];
+    for (const a of (resource.annotations || [])) {
+      if (a.external) queue.push(a.external);
+      else annos.push(a);
+    }
+    // Resolve paged collections: follow first/next until the pages run out.
+    const seen = new Set();
+    while (queue.length && seen.size < 50) {
+      const uri = queue.shift();
+      if (!uri || seen.has(uri)) continue;
+      seen.add(uri);
+      try {
+        const data = await fetchJSON(uri);
+        const page = normalize(data);
+        for (const a of (page.annotations || [])) {
+          if (a.external) queue.push(a.external);
+          else annos.push(a);
+        }
+        const next = data.next;
+        if (next) queue.push(typeof next === 'string' ? next : (next.id ?? next['@id']));
+      } catch {
+        /* skip unresolvable pages */
+      }
+    }
     const byTarget = new Map();
     for (const a of annos) {
       if (!a.target) continue;
@@ -184,37 +247,27 @@ class AyBeeViewer extends HTMLElement {
         /* skip unresolvable targets */
       }
     }
-    for (const ext of external) {
-      try {
-        const data = await fetchJSON(ext.external);
-        const res = normalize(data);
-        for (const a of (res.annotations || [])) {
-          if (!a.target) continue;
-          const key = a.target.split('#')[0];
-          const c = canvases.find((cv) => cv.id === key);
-          if (c) c.annotations.push(a);
-        }
-      } catch {
-        /* skip */
-      }
-    }
-    this.state.resource = { ...resource, canvases };
+    // Spread the live resource, not the normalized one, so the requested URI
+    // stays the canonical id used by shareable URLs.
+    this.state.resource = { ...this.state.resource, canvases };
   }
 
-  async loadExternalAnnotations(resource) {
-    for (const canvas of resource.canvases || []) {
-      for (const uri of canvas.externalAnnotations || []) {
-        try {
-          const data = await fetchJSON(uri);
-          const page = normalize(data);
-          for (const a of (page.annotations || [])) {
-            if (!a.external) canvas.annotations.push(a);
-          }
-        } catch {
-          /* skip */
-        }
+  async loadCanvasAnnotations(canvas) {
+    if (!canvas || canvas.externalLoaded) return;
+    canvas.externalLoaded = true;
+    const pages = await Promise.allSettled((canvas.externalAnnotations || []).map((uri) => fetchJSON(uri)));
+    for (const p of pages) {
+      if (p.status !== 'fulfilled') continue;
+      for (const a of (normalize(p.value).annotations || [])) {
+        if (!a.external) canvas.annotations.push(a);
       }
     }
+  }
+
+  ensureCanvasAnnotations() {
+    const canvas = this.currentCanvas();
+    if (!canvas || canvas.externalLoaded) return;
+    this.loadCanvasAnnotations(canvas).then(() => this.render());
   }
 
   selectCanvas(value, opts = {}) {
@@ -229,6 +282,7 @@ class AyBeeViewer extends HTMLElement {
       this.state.region = null;
       this.state.focusAnnotation = null;
       this.refresh();
+      this.ensureCanvasAnnotations();
       this.checkLdn();
     }
   }
@@ -237,6 +291,7 @@ class AyBeeViewer extends HTMLElement {
     this.updateUrl();
     this.render();
     this.focusAnnotationElement();
+    this.ensureCanvasAnnotations();
   }
 
   selectAnnotation(id) {
@@ -358,6 +413,12 @@ class AyBeeViewer extends HTMLElement {
       document.execCommand('copy');
       ta.remove();
     }
+    const status = this.querySelector('[role="status"]');
+    if (status) {
+      status.textContent = 'Copied';
+      clearTimeout(this._copyTimer);
+      this._copyTimer = setTimeout(() => { status.textContent = ''; }, 2000);
+    }
   }
 
   async downloadCrop() {
@@ -407,19 +468,20 @@ class AyBeeViewer extends HTMLElement {
 
   getLanguages(r) {
     const d = r.descriptions;
-    if (Array.isArray(d)) return d.map((o) => o['@language'] || o.language).filter(Boolean);
-    if (d && typeof d === 'object' && !Array.isArray(d)) return Object.keys(d);
+    // v2 lists { @value, @language } objects; v3/v4 use language maps.
+    if (Array.isArray(d)) return [...new Set(d.map((x) => x?.['@language']).filter(Boolean))];
+    if (d && typeof d === 'object') return Object.keys(d);
     return [];
   }
 
   currentDescription(r) {
     const d = r.descriptions;
-    if (Array.isArray(d) && d.length) {
-      const match = d.find((o) => (o['@language'] || o.language) === this.state.language);
-      return getLabel({ label: match ? (match['@value'] ?? match.value ?? match) : d[0] });
-    }
-    if (d && typeof d === 'object' && !Array.isArray(d) && d[this.state.language] != null) {
-      return getLabel({ label: d[this.state.language] });
+    const lang = this.state.language;
+    if (Array.isArray(d)) {
+      const match = d.find((x) => x?.['@language'] === lang);
+      if (match) return match['@value'];
+    } else if (d && typeof d === 'object' && d[lang] != null) {
+      return getLabel({ label: d[lang] });
     }
     return r.description;
   }
@@ -453,13 +515,7 @@ class AyBeeViewer extends HTMLElement {
   }
 
   sortedAnnotations() {
-    const q = (this.state.searchy || '').toLowerCase();
     return this.visibleAnnotations()
-      .filter((a) => {
-        if (!q) return true;
-        const text = (a.text || '').toLowerCase();
-        return this.state.searchin ? text.includes(q) : text.startsWith(q);
-      })
       .sort((a, b) => (a.text || '').localeCompare(b.text || ''));
   }
 
@@ -489,6 +545,7 @@ class AyBeeViewer extends HTMLElement {
     }
     this.innerHTML = this.viewerTemplate();
     this.hydrateCrops();
+    this.applySearch();
   }
 
   landingTemplate() {
@@ -505,15 +562,18 @@ class AyBeeViewer extends HTMLElement {
   }
 
   collectionTemplate() {
-    const s = this.state;
-    const r = s.resource;
+    const r = this.state.resource;
+    const links = (list) => (list || [])
+      .map((m) => `<p><a href="?iiif-content=${encodeURIComponent(m.id)}">${escapeHtml(m.label || m.id)}</a></p>`)
+      .join('');
     return `<div class="container">
       <div class="note u-see-thru">
         <h3 class="note-header text">${escapeHtml(r.label || '[ no label ]')}
           <button title="clear" class="button" data-action="clear"><i class="fa fa-bomb"></i></button>
         </h3>
         <div class="note-block">
-          ${(r.manifests || []).map((m) => `<p><a href="?iiif-content=${encodeURIComponent(m.id)}">${escapeHtml(m.label || m.id)}</a></p>`).join('') || '<p>[ no manifests ]</p>'}
+          ${links(r.manifests) || '<p>[ no manifests ]</p>'}
+          ${(r.collections || []).length ? `<h4>Collections</h4>${links(r.collections)}` : ''}
         </div>
       </div>
     </div>`;
@@ -574,7 +634,7 @@ class AyBeeViewer extends HTMLElement {
     if (a.id && a.id === s.focusAnnotation) cls.push('focused');
     const canvas = a.canvas;
     const image = (canvas && canvas.images && canvas.images[0]) || null;
-    return `<div class="${cls.join(' ')}" data-anno="${escapeHtml(a.id || '')}" data-action="select-annotation" data-uri="${escapeHtml(a.id || '')}" data-content="${escapeHtml(a.text || '')}">
+    return `<div class="${cls.join(' ')}" tabindex="0" role="button" data-anno="${escapeHtml(a.id || '')}" data-action="select-annotation" data-uri="${escapeHtml(a.id || '')}" data-content="${escapeHtml(a.text || '')}">
       <div>
         ${a.label ? `<strong>${escapeHtml(a.label)}</strong> ` : ''}<span class="text">${sanitizeHtml(a.text)}</span>
         ${a.text ? '' : '<code>[ no transcription ]</code>'}
@@ -590,7 +650,7 @@ class AyBeeViewer extends HTMLElement {
     if (!image) return '<p>[ no image found for this canvas ]</p>';
     return `<div class="region-view">
       <canvas data-crop="${escapeHtml(s.region)}" data-image="${escapeHtml(image.id)}" data-width="${canvas.width}" data-height="${canvas.height}" class="region-canvas"></canvas>
-      <p>Provenance: <a href="${escapeHtml(buildUrl(window.location.href, { 'iiif-content': s.resource.id, manifest: null }))}">view the full resource</a></p>
+      <p>Provenance: <a href="${escapeHtml(buildUrl(window.location.pathname, { 'iiif-content': s.resource.id, manifest: null }))}">view the full resource</a></p>
     </div>`;
   }
 
@@ -616,36 +676,37 @@ class AyBeeViewer extends HTMLElement {
     const base = { 'iiif-content': r.id, manifest: null };
     if (canvas && canvas.id) base.canvas = canvas.id;
     const fullUrl = anno && anno.id
-      ? buildUrl(window.location.href, { ...base, annotation: anno.id })
-      : buildUrl(window.location.href, base);
+      ? buildUrl(window.location.pathname, { ...base, annotation: anno.id })
+      : buildUrl(window.location.pathname, base);
     const boundedUrl = anno && anno.selector
-      ? buildUrl(window.location.href, { ...base, region: anno.selector, annotation: anno.id })
+      ? buildUrl(window.location.pathname, { ...base, region: anno.selector, annotation: anno.id })
       : null;
     const deepUrl = anno && anno.id
-      ? buildUrl(window.location.href, { 'iiif-content': anno.id, manifest: null })
+      ? buildUrl(window.location.pathname, { 'iiif-content': anno.id, manifest: null })
       : null;
     return `<div class="modal-overlay" data-action="close-share">
-      <div class="modal">
-        <h3>Share</h3>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="share-title">
+        <h3 id="share-title">Share</h3>
         <p>${anno ? `Annotation: <code>${escapeHtml(anno.id || '')}</code>` : 'Current resource'}</p>
         ${boundedUrl ? `<div class="share-option">
           <strong>Bounded area as image</strong>
-          <input readonly value="${escapeHtml(boundedUrl)}">
+          <input readonly aria-label="Bounded area link" value="${escapeHtml(boundedUrl)}">
           <button role="button" data-action="copy-bounded" data-url="${escapeHtml(boundedUrl)}">Copy</button>
           <button role="button" data-action="download-crop">Download PNG</button>
-          <small>Provenance: <a href="${escapeHtml(buildUrl(window.location.href, base))}">full resource</a></small>
+          <small>Provenance: <a href="${escapeHtml(buildUrl(window.location.pathname, base))}">full resource</a></small>
         </div>` : ''}
         <div class="share-option">
           <strong>${anno ? 'Full resource with annotation selected' : 'Full resource'}</strong>
-          <input readonly value="${escapeHtml(fullUrl)}">
+          <input readonly aria-label="${anno ? 'Full resource link with annotation selected' : 'Full resource link'}" value="${escapeHtml(fullUrl)}">
           <button role="button" data-action="copy-full" data-url="${escapeHtml(fullUrl)}">Copy</button>
         </div>
         ${deepUrl ? `<div class="share-option">
           <strong>Deep link to annotation</strong>
-          <input readonly value="${escapeHtml(deepUrl)}">
+          <input readonly aria-label="Deep link to annotation" value="${escapeHtml(deepUrl)}">
           <button role="button" data-action="copy-deep" data-url="${escapeHtml(deepUrl)}">Copy</button>
         </div>` : ''}
         <button role="button" data-action="close-share">Close</button>
+        <span role="status" class="copy-status"></span>
       </div>
     </div>`;
   }
@@ -653,15 +714,15 @@ class AyBeeViewer extends HTMLElement {
   settingsModalTemplate() {
     const inboxes = getInboxes();
     return `<div class="modal-overlay" data-action="close-settings">
-      <div class="modal">
-        <h3>Settings</h3>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <h3 id="settings-title">Settings</h3>
         <label><input type="checkbox" data-action="ldn-optin" ${getOptIn() ? 'checked' : ''}> Include annotations from LDN inboxes</label>
         <h4>LDN Inboxes</h4>
         <ul class="inbox-list">
-          ${inboxes.map((i) => `<li>${escapeHtml(i)} <button role="button" data-action="remove-inbox" data-inbox="${escapeHtml(i)}">×</button></li>`).join('')}
+          ${inboxes.map((i) => `<li>${escapeHtml(i)} <button role="button" aria-label="Remove ${escapeHtml(i)}" data-action="remove-inbox" data-inbox="${escapeHtml(i)}">×</button></li>`).join('')}
         </ul>
         <div class="row">
-          <input type="url" id="new-inbox-input" placeholder="https://inbox.rerum.io/messages" class="six columns">
+          <input type="url" id="new-inbox-input" aria-label="New inbox URI" placeholder="https://inbox.rerum.io/messages" class="six columns">
           <button role="button" data-action="add-inbox">Add</button>
         </div>
         <button role="button" data-action="close-settings">Close</button>
@@ -678,13 +739,17 @@ class AyBeeViewer extends HTMLElement {
       const height = parseFloat(el.dataset.height);
       if (!imageId || !width || !height) continue;
       const result = await cropImage(imageId, width, height, xywh);
+      // Line crops are drawn in image pixels (about 2x canvas coordinates);
+      // display them at canvas size so they do not overlap the next rows.
+      const displayWidth = el.classList.contains('crop-canvas') ? `${xywh[2]}px` : '100%';
       if (result.dataUrl) {
         const img = document.createElement('img');
         img.src = result.dataUrl;
         img.alt = '';
+        img.style.width = displayWidth;
         el.replaceWith(img);
       } else if (result.canvas) {
-        result.canvas.style.width = '100%';
+        result.canvas.style.width = displayWidth;
         result.canvas.style.maxWidth = '100%';
         result.canvas.style.maxHeight = '100%';
         el.replaceWith(result.canvas);

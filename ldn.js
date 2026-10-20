@@ -7,8 +7,8 @@
  */
 
 const DEFAULT_INBOX = 'https://inbox.rerum.io/messages';
-const INBOXES_KEY = 'read.ldn.inboxes';
-const OPTIN_KEY = 'read.ldn.optin';
+const INBOXES_KEY = 'aybee.ldn.inboxes';
+const OPTIN_KEY = 'aybee.ldn.optin';
 
 export function getInboxes() {
   try {

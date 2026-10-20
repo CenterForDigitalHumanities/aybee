@@ -406,6 +406,16 @@ img#backsplash {
     border-color: #31b0d5;
 }
 
+.text-annotation:focus-visible {
+    outline: 2px solid #31b0d5;
+    outline-offset: 2px;
+}
+
+.copy-status {
+    margin-left: .5rem;
+    font-style: italic;
+}
+
 .text-annotation {
     font-size: 1.2rem;
     height: 8rem;

@@ -12,6 +12,12 @@ test('parseQueryString handles double-encoded URIs', () => {
   assert.equal(q.iiifContent, 'https://example.org/manifest.json');
 });
 
+test('parseQueryString preserves escapes inside a single-encoded URI', () => {
+  // oh-my-rerum encodes % so that one decode is exact: %252F must survive as %2F.
+  const q = parseQueryString('?iiif-content=https://example.org/iiif/a%252Fb/manifest.json');
+  assert.equal(q.iiifContent, 'https://example.org/iiif/a%2Fb/manifest.json');
+});
+
 test('parseQueryString reads manifest and canvas params', () => {
   const q = parseQueryString('?manifest=https%3A%2F%2Fexample.org%2Fm.json&canvas=2');
   assert.equal(q.manifest, 'https://example.org/m.json');
