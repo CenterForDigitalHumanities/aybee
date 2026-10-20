@@ -296,6 +296,34 @@ test('collectAnnotations follows AnnotationCollection first', () => {
   assert.deepEqual(n.annotations, [{ external: 'https://example.org/page/first' }]);
 });
 
+test('collectAnnotations follows stub annotations by id', () => {
+  const n = normalize({
+    '@context': 'http://iiif.io/api/presentation/3/context.json',
+    id: 'https://example.org/page/1',
+    type: 'AnnotationPage',
+    items: [
+      { id: 'https://example.org/anno/stub', type: 'Annotation' },
+      {
+        id: 'https://example.org/anno/full',
+        type: 'Annotation',
+        target: 'https://example.org/canvas/1#xywh=0,0,100,100',
+        body: { type: 'TextualBody', value: 'Real' },
+      },
+    ],
+  });
+  assert.deepEqual(n.annotations, [
+    { external: 'https://example.org/anno/stub' },
+    {
+      id: 'https://example.org/anno/full',
+      target: 'https://example.org/canvas/1#xywh=0,0,100,100',
+      selector: 'xywh=0,0,100,100',
+      text: 'Real',
+      motivation: '',
+      source: 'manifest',
+    },
+  ]);
+});
+
 test('normalize recognizes the v2 sc:AnnotationCollection type', () => {
   const n = normalize({
     '@context': 'http://iiif.io/api/presentation/2/context.json',

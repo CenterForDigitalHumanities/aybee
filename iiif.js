@@ -249,7 +249,11 @@ export function collectAnnotations(resource, version) {
     }
     const t = normalizeType(item.type ?? item['@type']);
     if (t === 'Annotation') {
-      list.push(normalizeAnnotation(item, version));
+      const n = normalizeAnnotation(item, version);
+      // Stores like Rerum list annotations as { id, type } stubs. Without a
+      // target or body there is nothing to paint, so follow the id instead.
+      const stub = !item.target && !item.on && !item.body && !item.resource;
+      list.push(stub && (item.id || item['@id']) ? { external: item.id ?? item['@id'] } : n);
     } else if (t === 'AnnotationPage' || t === 'AnnotationCollection') {
       list.push(...collectAnnotations(item, version));
     } else if (item.id || item['@id']) {

@@ -196,28 +196,29 @@ class AyBeeViewer extends HTMLElement {
 
   async resolveAnnotationResource(resource) {
     const annos = [];
-    const queue = [];
+    let wave = [];
     for (const a of (resource.annotations || [])) {
-      if (a.external) queue.push(a.external);
+      if (a.external) wave.push(a.external);
       else annos.push(a);
     }
-    // Resolve paged collections: follow first/next until the pages run out.
+    // Resolve paged collections and stub references a page at a time: every
+    // link discovered in a wave is fetched in parallel, and the next/first
+    // links it hands back form the following wave.
     const seen = new Set();
-    while (queue.length && seen.size < 50) {
-      const uri = queue.shift();
-      if (!uri || seen.has(uri)) continue;
-      seen.add(uri);
-      try {
-        const data = await fetchJSON(uri);
-        const page = normalize(data);
-        for (const a of (page.annotations || [])) {
-          if (a.external) queue.push(a.external);
+    while (wave.length && seen.size < 50) {
+      const batch = wave.filter((uri) => uri && !seen.has(uri));
+      batch.forEach((uri) => seen.add(uri));
+      wave = [];
+      const pages = await Promise.allSettled(batch.map((uri) => fetchJSON(uri)));
+      for (const p of pages) {
+        if (p.status !== 'fulfilled') continue;
+        const data = p.value;
+        for (const a of (normalize(data).annotations || [])) {
+          if (a.external) wave.push(a.external);
           else annos.push(a);
         }
-        const next = data.next;
-        if (next) queue.push(typeof next === 'string' ? next : (next.id ?? next['@id']));
-      } catch {
-        /* skip unresolvable pages */
+        const next = data.next ?? data.items?.next;
+        if (next) wave.push(typeof next === 'string' ? next : (next.id ?? next['@id']));
       }
     }
     const byTarget = new Map();
@@ -227,25 +228,22 @@ class AyBeeViewer extends HTMLElement {
       if (!byTarget.has(key)) byTarget.set(key, []);
       byTarget.get(key).push(a);
     }
+    const targets = [...byTarget.entries()];
+    const fetched = await Promise.allSettled(targets.map(([uri]) => fetchJSON(uri)));
     const canvases = [];
-    for (const [uri, list] of byTarget) {
-      try {
-        const data = await fetchJSON(uri);
-        const res = normalize(data);
-        if (res.type === 'Canvas') {
-          const c = res.canvases[0];
-          c.annotations.push(...list);
-          canvases.push(c);
-        } else if (res.type === 'Manifest') {
-          const c = res.canvases.find((cv) => cv.id === uri) || res.canvases[0];
-          if (c) {
-            c.annotations.push(...list);
-            canvases.push(c);
-          }
-        }
-      } catch {
-        /* skip unresolvable targets */
-      }
+    for (const [i, result] of fetched.entries()) {
+      if (result.status !== 'fulfilled') continue;
+      const [, list] = targets[i];
+      const res = normalize(result.value);
+      const canvas =
+        res.type === 'Canvas'
+          ? res.canvases[0]
+          : res.type === 'Manifest'
+            ? res.canvases.find((cv) => cv.id === targets[i][0]) || res.canvases[0]
+            : null;
+      if (!canvas) continue;
+      canvas.annotations.push(...list);
+      canvases.push(canvas);
     }
     // Spread the live resource, not the normalized one, so the requested URI
     // stays the canonical id used by shareable URLs.
