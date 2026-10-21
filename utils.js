@@ -73,13 +73,13 @@ export function cropImage(imageUrl, canvasWidth, canvasHeight, xywh) {
       const ctx = out.getContext('2d');
       try {
         ctx.drawImage(img, x * scale, y * scale, w * scale, h * scale, 0, 0, out.width, out.height);
-        resolve({ dataUrl: out.toDataURL(), tainted: false, canvas: out });
+        resolve({ dataUrl: out.toDataURL(), canvas: out });
       } catch {
-        resolve({ dataUrl: null, tainted: true, canvas: out });
+        resolve({ dataUrl: null, canvas: out });
       }
     };
     img.onerror = () => {
-      if (!usedCors) return resolve({ dataUrl: null, tainted: true, canvas: null });
+      if (!usedCors) return resolve({ dataUrl: null, canvas: null });
       // Image hosts without Access-Control-Allow-Origin fail the CORS request.
       // Retry plain: the canvas is tainted (no toDataURL, no PNG download) but
       // still displays the crop.

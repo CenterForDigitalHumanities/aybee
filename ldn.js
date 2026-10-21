@@ -6,7 +6,7 @@
  * inclusion, similar to the Mirador LDN plugin.
  */
 
-const DEFAULT_INBOX = 'https://inbox.rerum.io/messages';
+export const DEFAULT_INBOX = 'https://inbox.rerum.io/messages';
 const INBOXES_KEY = 'aybee.ldn.inboxes';
 const OPTIN_KEY = 'aybee.ldn.optin';
 

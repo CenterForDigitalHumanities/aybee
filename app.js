@@ -1,9 +1,7 @@
 import { normalize, getLabel } from './iiif.js';
 import { parseQuery, buildUrl } from './query.js';
-import { getInboxes, saveInboxes, getOptIn, setOptIn, queryInbox } from './ldn.js';
+import { DEFAULT_INBOX, getInboxes, saveInboxes, getOptIn, setOptIn, queryInbox } from './ldn.js';
 import { escapeHtml, sanitizeHtml, parseXYWH, cropImage } from './utils.js';
-
-const DEFAULT_INBOX = 'https://inbox.rerum.io/messages';
 
 async function fetchJSON(uri) {
   if (new URL(uri, window.location.href).protocol !== 'https:') {
@@ -70,12 +68,13 @@ class AyBeeViewer extends HTMLElement {
         this.state.searchin = !this.state.searchin;
         this.applySearch();
         break;
-      case 'set-letter':
+      case 'set-letter': {
         this.state.searchy = el.dataset.letter || '';
         const input = this.querySelector('[data-action="search-input"]');
         if (input) input.value = this.state.searchy;
         this.applySearch();
         break;
+      }
       case 'open-share': this.openModal('share'); break;
       case 'close-share': this.closeModal('share'); break;
       case 'open-settings': this.openModal('settings'); break;
@@ -182,11 +181,10 @@ class AyBeeViewer extends HTMLElement {
       // Landing on a single annotation should highlight it, not just its canvas.
       if (resource.type === 'Annotation' && !query.annotation) this.state.focusAnnotation = resource.id;
       if (query.canvas) this.selectCanvas(query.canvas, { silent: true });
-      // Paint once the canvases are ready; external annotation pages load in
-      // parallel, and canvases the user has not visited yet pull theirs on demand.
+      // Paint once the canvases are ready; every canvas's external annotation
+      // pages load in parallel.
       await Promise.allSettled((this.state.resource?.canvases || []).map((c) => this.loadCanvasAnnotations(c)));
       this.refresh();
-      this.focusAnnotationElement();
       this.checkLdn();
     } catch (err) {
       this.state.error = err.message || String(err);
@@ -219,7 +217,7 @@ class AyBeeViewer extends HTMLElement {
           if (a.external) wave.push(a.external);
           else annos.push(a);
         }
-        const next = data.next ?? data.items?.next;
+        const next = data.next;
         if (next) wave.push(typeof next === 'string' ? next : (next.id ?? next['@id']));
       }
     }
@@ -244,7 +242,9 @@ class AyBeeViewer extends HTMLElement {
             ? res.canvases.find((cv) => cv.id === targets[i][0]) || res.canvases[0]
             : null;
       if (!canvas) continue;
-      canvas.annotations.push(...list);
+      // Show what was asked for, not every layer the target canvas carries.
+      canvas.annotations = list;
+      canvas.externalAnnotations = [];
       canvases.push(canvas);
     }
     // Spread the live resource, not the normalized one, so the requested URI
@@ -264,12 +264,6 @@ class AyBeeViewer extends HTMLElement {
     }
   }
 
-  ensureCanvasAnnotations() {
-    const canvas = this.currentCanvas();
-    if (!canvas || canvas.externalLoaded) return;
-    this.loadCanvasAnnotations(canvas).then(() => this.render());
-  }
-
   selectCanvas(value, opts = {}) {
     const canvases = this.state.resource?.canvases || [];
     let index = -1;
@@ -282,7 +276,6 @@ class AyBeeViewer extends HTMLElement {
       this.state.region = null;
       this.state.focusAnnotation = null;
       this.refresh();
-      this.ensureCanvasAnnotations();
       this.checkLdn();
     }
   }
@@ -291,7 +284,6 @@ class AyBeeViewer extends HTMLElement {
     this.updateUrl();
     this.render();
     this.focusAnnotationElement();
-    this.ensureCanvasAnnotations();
   }
 
   selectAnnotation(id) {
@@ -524,9 +516,8 @@ class AyBeeViewer extends HTMLElement {
 
   applySearch() {
     const q = (this.state.searchy || '').toLowerCase();
-    const byId = new Map(this.allAnnotations().map((a) => [a.id, a.text || '']));
     for (const el of this.querySelectorAll('.text-annotation')) {
-      const text = (byId.get(el.dataset.anno) || '').toLowerCase();
+      const text = (el.dataset.content || '').toLowerCase();
       const match = !q || (this.state.searchin ? text.includes(q) : text.startsWith(q));
       el.style.display = match ? '' : 'none';
     }
@@ -599,7 +590,7 @@ class AyBeeViewer extends HTMLElement {
         </div>
         ${r.metadata.length ? `<div class="note-block" style="max-height: 12rem;overflow: auto;"><dl>${r.metadata.map((m) => `<dt>${escapeHtml(m.label)}</dt><dd class="text">${sanitizeHtml(m.value)}</dd>`).join('')}</dl></div>` : ''}
         <div class="btn-group note-footer">
-          <button role="button" data-action="toggle-search-mode">${s.searchin ? 'Finding All:' : 'Starting With:'}</button>
+          <button data-action="toggle-search-mode">${s.searchin ? 'Finding All:' : 'Starting With:'}</button>
           <input data-action="search-input" placeholder="Type to Filter" type="text" value="${escapeHtml(s.searchy)}">
           ${s.letters.map((l) => `<a data-action="set-letter" data-letter="${l}">${l}</a>`).join('')}
         </div>
@@ -608,8 +599,8 @@ class AyBeeViewer extends HTMLElement {
             <option value="" ${s.canvasIndex === -1 ? 'selected' : ''}>All canvases</option>
             ${canvases.map((c, i) => `<option value="${escapeHtml(c.id || i)}" ${i === s.canvasIndex ? 'selected' : ''}>${escapeHtml(c.label || c.id || i)}</option>`).join('')}
           </select>
-          <button role="button" data-action="open-share" title="Share"><i class="fa fa-share-alt"></i></button>
-          <button role="button" data-action="open-settings" title="Settings"><i class="fa fa-cog"></i></button>
+          <button data-action="open-share" title="Share"><i class="fa fa-share-alt"></i></button>
+          <button data-action="open-settings" title="Settings"><i class="fa fa-cog"></i></button>
         </div>
       </div>
       <div style="position:relative;">
@@ -665,7 +656,7 @@ class AyBeeViewer extends HTMLElement {
       <div class="note-block">
         ${s.ldn.results.map((a) => `<div class="ldn-result">
           <span class="text">${sanitizeHtml(a.text || a.id || '[ no text ]')}</span>
-          ${s.ldn.included.has(a.id) ? '<em>included</em>' : `<button role="button" data-action="include-ldn" data-anno="${escapeHtml(a.id || '')}">Include</button>`}
+          ${s.ldn.included.has(a.id) ? '<em>included</em>' : `<button data-action="include-ldn" data-anno="${escapeHtml(a.id || '')}">Include</button>`}
         </div>`).join('')}
       </div>
     </div>`;
@@ -694,21 +685,21 @@ class AyBeeViewer extends HTMLElement {
         ${boundedUrl ? `<div class="share-option">
           <strong>Bounded area as image</strong>
           <input readonly aria-label="Bounded area link" value="${escapeHtml(boundedUrl)}">
-          <button role="button" data-action="copy-bounded" data-url="${escapeHtml(boundedUrl)}">Copy</button>
-          <button role="button" data-action="download-crop">Download PNG</button>
+          <button data-action="copy-bounded" data-url="${escapeHtml(boundedUrl)}">Copy</button>
+          <button data-action="download-crop">Download PNG</button>
           <small>Provenance: <a href="${escapeHtml(buildUrl(window.location.pathname, base))}">full resource</a></small>
         </div>` : ''}
         <div class="share-option">
           <strong>${anno ? 'Full resource with annotation selected' : 'Full resource'}</strong>
           <input readonly aria-label="${anno ? 'Full resource link with annotation selected' : 'Full resource link'}" value="${escapeHtml(fullUrl)}">
-          <button role="button" data-action="copy-full" data-url="${escapeHtml(fullUrl)}">Copy</button>
+          <button data-action="copy-full" data-url="${escapeHtml(fullUrl)}">Copy</button>
         </div>
         ${deepUrl ? `<div class="share-option">
           <strong>Deep link to annotation</strong>
           <input readonly aria-label="Deep link to annotation" value="${escapeHtml(deepUrl)}">
-          <button role="button" data-action="copy-deep" data-url="${escapeHtml(deepUrl)}">Copy</button>
+          <button data-action="copy-deep" data-url="${escapeHtml(deepUrl)}">Copy</button>
         </div>` : ''}
-        <button role="button" data-action="close-share">Close</button>
+        <button data-action="close-share">Close</button>
         <span role="status" class="copy-status"></span>
       </div>
     </div>`;
@@ -722,13 +713,13 @@ class AyBeeViewer extends HTMLElement {
         <label><input type="checkbox" data-action="ldn-optin" ${getOptIn() ? 'checked' : ''}> Include annotations from LDN inboxes</label>
         <h4>LDN Inboxes</h4>
         <ul class="inbox-list">
-          ${inboxes.map((i) => `<li>${escapeHtml(i)} <button role="button" aria-label="Remove ${escapeHtml(i)}" data-action="remove-inbox" data-inbox="${escapeHtml(i)}">×</button></li>`).join('')}
+          ${inboxes.map((i) => `<li>${escapeHtml(i)} <button aria-label="Remove ${escapeHtml(i)}" data-action="remove-inbox" data-inbox="${escapeHtml(i)}">×</button></li>`).join('')}
         </ul>
         <div class="row">
           <input type="url" id="new-inbox-input" aria-label="New inbox URI" placeholder="https://inbox.rerum.io/messages" class="six columns">
-          <button role="button" data-action="add-inbox">Add</button>
+          <button data-action="add-inbox">Add</button>
         </div>
-        <button role="button" data-action="close-settings">Close</button>
+        <button data-action="close-settings">Close</button>
       </div>
     </div>`;
   }
@@ -752,9 +743,9 @@ class AyBeeViewer extends HTMLElement {
         img.style.width = displayWidth;
         el.replaceWith(img);
       } else if (result.canvas) {
-        result.canvas.style.width = displayWidth;
+        // app.css has `canvas { width: auto !important }`, so match its priority.
+        result.canvas.style.setProperty('width', displayWidth, 'important');
         result.canvas.style.maxWidth = '100%';
-        result.canvas.style.maxHeight = '100%';
         el.replaceWith(result.canvas);
       }
     }
