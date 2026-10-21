@@ -628,7 +628,7 @@ class AyBeeViewer extends HTMLElement {
     if (a.id && a.id === s.focusAnnotation) cls.push('focused');
     const canvas = a.canvas;
     const image = (canvas && canvas.images && canvas.images[0]) || null;
-    return `<div class="${cls.join(' ')}" tabindex="0" role="button" data-anno="${escapeHtml(a.id || '')}" data-action="select-annotation" data-uri="${escapeHtml(a.id || '')}" data-content="${escapeHtml(a.text || '')}">
+    return `<div class="${cls.join(' ')}" tabindex="0" role="button" data-anno="${escapeHtml(a.id || '')}" data-action="select-annotation" data-content="${escapeHtml(a.text || '')}">
       <div>
         ${a.label ? `<strong>${escapeHtml(a.label)}</strong> ` : ''}<span class="text">${sanitizeHtml(a.text)}</span>
         ${a.text ? '' : '<code>[ no transcription ]</code>'}

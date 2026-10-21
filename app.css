@@ -25,12 +25,6 @@ a[scrollto].top:hover::before{
     }
 }
 
-.disabled {
-    cursor: not-allowed;
-    pointer-events: none;
-    opacity: .5;
-}
-
 property label {
     z-index: 1; /* hover gets lost in floats */
 }
@@ -498,12 +492,6 @@ canvas {
 
 .note>.note-block {
     overflow: auto;
-}
-
-/* new styles (from read upgrade) */
-button:disabled {
-    opacity: .5;
-    cursor: not-allowed;
 }
 
 /* special case CSS to test injecting stylesheets */

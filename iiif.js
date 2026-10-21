@@ -156,6 +156,19 @@ export function normalizeAnnotation(anno, version) {
   };
 }
 
+// The image a painting body points at. A SpecificResource body (v3 rotation,
+// v4 transforms) wraps it in `source`.
+function paintedResource(body) {
+  const b = Array.isArray(body) ? body[0] : body;
+  if (!b || typeof b !== 'object') return null;
+  const type = b.type ?? b['@type'];
+  if (type === 'SpecificResource' || type === 'oa:SpecificResource') {
+    const src = b.source ?? b.full;
+    return typeof src === 'string' ? { id: src } : paintedResource(src);
+  }
+  return b;
+}
+
 function isPainting(anno) {
   const m = anno.motivation;
   const motivations = Array.isArray(m) ? m : [m];
@@ -185,10 +198,8 @@ export function normalizeCanvas(canvas, version) {
     for (const page of [].concat(canvas.items || [])) {
       for (const anno of [].concat(page.items || [])) {
         if (isPainting(anno)) {
-          const body = Array.isArray(anno.body) ? anno.body[0] : anno.body;
-          if (body && typeof body === 'object') {
-            images.push({ id: body.id ?? body['@id'] ?? '', service: body.service || null });
-          }
+          const body = paintedResource(anno.body);
+          if (body) images.push({ id: body.id ?? body['@id'] ?? '', service: body.service || null });
         }
       }
     }
@@ -279,7 +290,8 @@ export function normalize(resource) {
     const ref = (m) => ({ id: m.id ?? m['@id'] ?? '', label: getLabel(m) });
     const isCollection = (m) => normalizeType(m.type ?? m['@type']) === 'Collection';
     // v2 splits members into manifests/collections; v3+ lists them in items.
-    const items = [].concat(resource.items || []).filter(Boolean);
+    // v2.1 may list both kinds together in `members`.
+    const items = [].concat(resource.items || [], resource.members || []).filter(Boolean);
     return {
       ...base,
       manifests: [].concat(resource.manifests || [], items.filter((m) => !isCollection(m))).map(ref),

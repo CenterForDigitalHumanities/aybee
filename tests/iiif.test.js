@@ -161,6 +161,30 @@ test('normalize v4 manifest', () => {
   assert.equal(n.canvases[0].images[0].id, 'https://example.org/img/4/full/full/0/default.jpg');
 });
 
+test('normalize unwraps SpecificResource painting bodies', () => {
+  const canvas = (body) => normalize({
+    '@context': 'http://iiif.io/api/presentation/4/context.json',
+    id: 'https://example.org/manifest/sr',
+    type: 'Manifest',
+    items: [{
+      id: 'https://example.org/canvas/sr',
+      type: 'Canvas',
+      width: 600,
+      height: 900,
+      items: [{ type: 'AnnotationPage', items: [{ type: 'Annotation', motivation: 'painting', body, target: 'https://example.org/canvas/sr' }] }],
+    }],
+  }).canvases[0];
+  const rotated = canvas({
+    id: 'https://example.org/body/rotated',
+    type: 'SpecificResource',
+    source: { id: 'https://example.org/img/sr/full/max/0/default.jpg', type: 'Image' },
+    selector: { type: 'ImageApiSelector', rotation: '90' },
+  });
+  assert.equal(rotated.images[0].id, 'https://example.org/img/sr/full/max/0/default.jpg');
+  const bySource = canvas({ type: 'SpecificResource', source: 'https://example.org/img/sr2.jpg' });
+  assert.equal(bySource.images[0].id, 'https://example.org/img/sr2.jpg');
+});
+
 test('normalize standalone v2 canvas', () => {
   const n = normalize(v2Canvas);
   assert.equal(n.type, 'Canvas');
@@ -283,6 +307,21 @@ test('normalize keeps v2 Collection manifests and collections arrays', () => {
   });
   assert.equal(n.manifests[0].label, 'Manifest B');
   assert.equal(n.collections[0].label, 'Nested 2');
+});
+
+test('normalize reads v2.1 Collection members', () => {
+  const n = normalize({
+    '@context': 'http://iiif.io/api/presentation/2/context.json',
+    '@id': 'https://example.org/collection/members',
+    '@type': 'sc:Collection',
+    label: 'Members',
+    members: [
+      { '@id': 'https://example.org/manifest/c', '@type': 'sc:Manifest', label: 'Manifest C' },
+      { '@id': 'https://example.org/collection/n3', '@type': 'sc:Collection', label: 'Nested 3' },
+    ],
+  });
+  assert.deepEqual(n.manifests, [{ id: 'https://example.org/manifest/c', label: 'Manifest C' }]);
+  assert.deepEqual(n.collections, [{ id: 'https://example.org/collection/n3', label: 'Nested 3' }]);
 });
 
 test('collectAnnotations follows AnnotationCollection first', () => {
