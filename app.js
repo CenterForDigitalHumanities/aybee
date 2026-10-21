@@ -66,6 +66,7 @@ class AyBeeViewer extends HTMLElement {
       case 'load-input': this.loadFromInput(); break;
       case 'toggle-search-mode':
         this.state.searchin = !this.state.searchin;
+        el.textContent = this.state.searchin ? 'Finding All:' : 'Starting With:';
         this.applySearch();
         break;
       case 'set-letter': {
@@ -633,7 +634,7 @@ class AyBeeViewer extends HTMLElement {
         ${a.label ? `<strong>${escapeHtml(a.label)}</strong> ` : ''}<span class="text">${sanitizeHtml(a.text)}</span>
         ${a.text ? '' : '<code>[ no transcription ]</code>'}
       </div>
-      ${a.selector && image ? `<canvas data-crop="${escapeHtml(a.selector)}" data-image="${escapeHtml(image.id)}" data-width="${canvas.width}" data-height="${canvas.height}" class="crop-canvas"></canvas>` : ''}
+      ${a.selector && image ? `<canvas data-crop="${escapeHtml(a.selector)}" data-image="${escapeHtml(image.id)}" data-width="${escapeHtml(canvas.width)}" data-height="${escapeHtml(canvas.height)}" class="crop-canvas"></canvas>` : ''}
     </div>`;
   }
 
@@ -643,7 +644,7 @@ class AyBeeViewer extends HTMLElement {
     const image = (canvas && canvas.images && canvas.images[0]) || null;
     if (!image) return '<p>[ no image found for this canvas ]</p>';
     return `<div class="region-view">
-      <canvas data-crop="${escapeHtml(s.region)}" data-image="${escapeHtml(image.id)}" data-width="${canvas.width}" data-height="${canvas.height}" class="region-canvas"></canvas>
+      <canvas data-crop="${escapeHtml(s.region)}" data-image="${escapeHtml(image.id)}" data-width="${escapeHtml(canvas.width)}" data-height="${escapeHtml(canvas.height)}" class="region-canvas"></canvas>
       <p>Provenance: <a href="${escapeHtml(buildUrl(window.location.pathname, { 'iiif-content': s.resource.id, manifest: null }))}">view the full resource</a></p>
     </div>`;
   }

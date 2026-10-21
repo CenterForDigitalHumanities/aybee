@@ -216,8 +216,8 @@ export function normalizeCanvas(canvas, version) {
   return {
     id,
     label: getLabel(canvas),
-    width: canvas.width,
-    height: canvas.height,
+    width: Number(canvas.width) || 0,
+    height: Number(canvas.height) || 0,
     images,
     annotations,
     externalAnnotations,
