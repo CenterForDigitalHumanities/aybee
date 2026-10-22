@@ -25,12 +25,6 @@ a[scrollto].top:hover::before{
     }
 }
 
-.disabled {
-    cursor: not-allowed;
-    pointer-events: none;
-    opacity: .5;
-}
-
 property label {
     z-index: 1; /* hover gets lost in floats */
 }
@@ -346,4 +340,279 @@ dd {
     100% {
         background-position: top right;
     }
+}
+
+/* aybee viewer (moved from aybee.html scoped styles) */
+.text-annotation:focus-visible {
+    outline: 2px solid #31b0d5;
+    outline-offset: 2px;
+}
+
+.copy-status {
+    margin-left: .5rem;
+    font-style: italic;
+}
+
+.text-annotation {
+    font-size: 1.2rem;
+    height: 8rem;
+    float: left;
+    padding: 0 3rem;
+    transition: background-color 300ms ease;
+}
+
+.text-annotation canvas, .text-annotation img {
+    transition: 500ms all;
+    box-shadow: rgba(0,0,0,1) 0px 0px 0px 0px;
+    width: auto;
+    max-width: 100%;
+    /* Keep crops from high-resolution canvases inside the fixed-height tile */
+    max-height: 6rem;
+    object-fit: contain;
+    object-position: left center;
+}
+
+.text-annotation:hover {
+    background-color: #cfcfcf;
+}
+
+.text-annotation:hover canvas, .text-annotation:hover img {
+    box-shadow: rgba(0,0,0,.4) 0px 30px 5px -10px;
+}
+
+.text-annotation div:first-of-type {
+    position: absolute;
+}
+
+.text-annotation div:last-child, .block .text-annotation div {
+    position: relative !important;
+}
+
+.block .text-annotation:hover canvas, .block .text-annotation:hover img {
+    transform: none;
+    box-shadow: inherit;
+}
+
+.text-annotation.focused {
+    background-color: #d6ebff;
+}
+
+.u-see-thru {
+    background-color: rgba(255,255,255,.7);
+}
+
+.btn-group, .btn-group-vertical {
+    position: relative;
+    display: -webkit-inline-box;
+    display: -webkit-inline-flex;
+    display: -ms-inline-flexbox;
+    display: inline-flex;
+    vertical-align: middle;
+}
+
+.btn-group>.btn:first-child:not(:last-child):not(.dropdown-toggle) {
+    border-bottom-right-radius: 0;
+    border-top-right-radius: 0;
+}
+
+.btn-group>.btn:first-child {
+    margin-left: 0;
+}
+
+.btn-group>.btn {
+    position: relative;
+    -webkit-box-flex: 0;
+    -webkit-flex: 0 1 auto;
+    -ms-flex: 0 1 auto;
+    flex: 0 1 auto;
+}
+
+.btn {
+    display: inline-block;
+    font-weight: 400;
+    line-height: 1.25;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: middle;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    border: 1px solid transparent;
+    padding: .5rem 1rem;
+    font-size: 1rem;
+    border-radius: .25rem;
+    -webkit-transition: all .2s ease-in-out;
+    -o-transition: all .2s ease-in-out;
+    transition: all .2s ease-in-out;
+}
+
+[data-toggle=buttons]>.btn input[type=checkbox], [data-toggle=buttons]>.btn input[type=radio], [data-toggle=buttons]>.btn-group>.btn input[type=checkbox], [data-toggle=buttons]>.btn-group>.btn input[type=radio] {
+    position: absolute;
+    clip: rect(0,0,0,0);
+    pointer-events: none;
+}
+
+.btn-info.active, .btn-info:active, .show>.btn-info.dropdown-toggle {
+    color: #fff;
+    background-color: #31b0d5;
+    background-image: none;
+    border-color: #2aabd2;
+}
+
+.btn-info {
+    color: #fff;
+    background-color: #5bc0de;
+    border-color: #5bc0de;
+}
+
+.btn-info:hover {
+    color: #fff;
+    background-color: #31b0d5;
+    border-color: #2aabd2;
+}
+
+canvas {
+    width: auto !important;
+}
+
+.note-footer a {
+    padding: .25rem;
+    border: thin solid #ddd;
+    height: 2.5em;
+    line-height: 2;
+    width: 1.5em;
+    text-align: center;
+    margin-right:-1px;
+}
+
+.note-footer a:hover {
+    background-color: #ddd;
+}
+
+.note>.note-block {
+    overflow: auto;
+}
+
+/* special case CSS to test injecting stylesheets */
+em[decoration='double-underline'] {
+    font-style: normal;
+    text-decoration: underline;
+    text-decoration-style: double;
+}
+
+em[decoration='underline'] {
+    font-style: normal;
+    text-decoration: underline;
+}
+
+monogram {
+    font-family: cursive;
+    padding: .25rem;
+    border: solid 3px;
+    margin: -.25rem;
+}
+
+monogram[shape='oval'] {
+    border-radius: 50%;
+}
+
+/* LDN panel */
+.ldn-panel {
+    border-left: 4px solid #5bc0de;
+}
+
+.ldn-annotation {
+    outline: 2px dashed #5bc0de;
+    outline-offset: 2px;
+}
+
+.ldn-result {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    padding: .25rem 0;
+    border-bottom: 1px solid #eee;
+}
+
+/* modals */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 30, 60, .5);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal {
+    background: #fff;
+    border-radius: .25rem;
+    box-shadow: 0 1px 3px rgba(0,30,60,.12), 0 1px 2px rgba(0,30,60,.24);
+    padding: 1.5rem;
+    max-width: 40rem;
+    width: 90%;
+    max-height: 90vh;
+    overflow: auto;
+}
+
+.modal h3 {
+    margin-bottom: 1rem;
+}
+
+.modal h4 {
+    margin: 1rem 0 .5rem;
+}
+
+.modal label {
+    display: block;
+    margin-bottom: 1rem;
+}
+
+.share-option {
+    margin-bottom: 1rem;
+}
+
+.share-option input {
+    width: 100%;
+    margin-bottom: .5rem;
+}
+
+.share-option small {
+    display: block;
+    margin-top: .25rem;
+}
+
+.inbox-list {
+    list-style: none;
+    margin-bottom: 1rem;
+}
+
+.inbox-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: .25rem 0;
+}
+
+.region-view {
+    position: relative;
+}
+
+.region-canvas, .crop-canvas {
+    max-width: 100%;
+}
+
+.alert {
+    padding: 1rem 1.5rem;
+    border-radius: 4px;
+    margin: 1rem 0;
+}
+
+.alert-danger {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
 }
